@@ -1,5 +1,5 @@
 #![allow(warnings)]
-mod units;
+pub mod units;
 
 #[cfg(test)]
 mod tests {

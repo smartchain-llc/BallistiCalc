@@ -1,15 +1,21 @@
 #![allow(warnings)]
 
+use std::cmp;
+
 const INCH_YARD_RATIO: f32 = 0.0277;
 const INCH_MOA_YARD_PERCENTAGE: f32 = 1.047; // 0.029 yards
 
-trait LinearDistance {
+pub trait LinearDistance {
     fn moa(&self) -> Inch;
     fn distance(&self) -> Self;
 }
 
-struct Yard { units: f32 }
-
+pub struct Yard { units: f32 }
+impl Yard{
+    pub fn new(distance: f32) -> Self {
+        Self{ units: distance }
+    }
+}
 impl LinearDistance for Yard {
     fn distance(&self) -> Self { Self { units: self.units } }
     fn moa(&self) -> Inch {
@@ -18,8 +24,13 @@ impl LinearDistance for Yard {
 }
 
 
-
-struct Inch { units: f32 }
+#[derive(Debug)]
+pub struct Inch { units: f32 }
+impl Inch{
+    pub fn new(distance: f32) -> Self {
+        Self{ units: distance }
+    }
+}
 impl LinearDistance for Inch {
     fn distance(&self) -> Self {
         Self{ units: self.units }
@@ -44,21 +55,38 @@ impl From<Yard> for Inch {
 
 const ADJUSTMENT_ROUND: f32 = 0.5;
 
-struct MOAAdjustment {
+pub struct MOAAdjustment {
     amount: f32
 }
 impl MOAAdjustment {
     pub fn good_enough(&self) -> f32 {
-        let integer = &self.amount.trunc();
-        let decimal = &self.amount.fract();
-        let offsetFromRound = ADJUSTMENT_ROUND - decimal;
-        if offsetFromRound > 0.25 { return integer - ADJUSTMENT_ROUND; }
-        if offsetFromRound > -0.25 { return integer + ADJUSTMENT_ROUND }
-        *integer
+        let frac = self.amount.fract();
+        if frac > 0.5 {
+            let top = self.amount.round();
+            let bottom = self.amount.trunc() + ADJUSTMENT_ROUND;
+            let deltaTop = (self.amount - top).abs();
+            let deltaBottom = (self.amount - bottom).abs();
+            let min = &deltaTop.min(deltaBottom);
+            if *min == deltaBottom {
+                return bottom;
+            }
+            return top;
+        }
+        else {
+            let top = self.amount.trunc() + ADJUSTMENT_ROUND;
+            let bottom = self.amount.round();
+            let deltaTop = (self.amount - top).abs();
+            let deltaBottom = (self.amount - bottom).abs();
+            let min = &deltaTop.min(deltaBottom);
+            if *min == deltaBottom {
+                return bottom;
+            }
+            return top;
+        }
     }
 }
 fn moa_at(distance: &Yard) -> Inch { Inch{ units: 0. } }
-fn moa_adjustments_to_zero(inchOffset: &Inch, distance: &Yard) -> MOAAdjustment {
+pub fn moa_adjustments_to_zero(inchOffset: &Inch, distance: &Yard) -> MOAAdjustment {
     MOAAdjustment { amount: inchOffset.units / distance.moa().units as f32 }
 }
 
@@ -101,12 +129,16 @@ mod tests {
         let mut offset: Inch = Inch { units: 4.188 };
         assert_eq!(moa_adjustments_to_zero(&offset, &Yard{ units: 400. }).amount, 1.);
 
+        offset = Inch{ units: 2.1 };
+        let adjustments = moa_adjustments_to_zero(&offset, &Yard{ units: 200. });
+        assert_eq!(adjustments.good_enough(), 1.);
+
         offset = Inch{ units: 6. };
         let adjustments = moa_adjustments_to_zero(&offset, &Yard{ units: 400. });
         assert_eq!(adjustments.good_enough(), 1.5);
 
-        offset = Inch { units: 8. };
+        offset = Inch { units: 1. };
         let adjustments = moa_adjustments_to_zero(&offset, &Yard{ units: 400. });
-        assert_eq!(adjustments.good_enough(), 2.);
+        assert_eq!(adjustments.good_enough(), 0.);
     }
 }
